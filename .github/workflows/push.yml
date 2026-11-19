@@ -1,0 +1,17 @@
+name: 每日课表推送
+on:
+  schedule:
+    # UTC 23:30 = 北京时间早上 7:30（GitHub 允许有几分钟延迟）
+    - cron: '30 23 * * *'
+  workflow_dispatch: {}   # 支持手动点一下立即测试
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 推送课表
+        run: python kebiao_push.py
