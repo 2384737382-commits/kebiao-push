@@ -10,8 +10,8 @@ import datetime
 import urllib.request
 
 # ================== 配置区 ==================
-# 云端（GitHub Actions）用环境变量；本地运行用下面默认值
-PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", "cef1db7a8959464e81c72fea39ef3382")
+# 云端（GitHub Actions）通过 Secret 注入；本地运行请设置环境变量 PUSHPLUS_TOKEN
+PUSHPLUS_TOKEN = os.environ["PUSHPLUS_TOKEN"]
 TOPIC = "feiya01"   # PushPlus 一对多群组编码
 
 # 本学期第 1 周的周一（由第10周周一=2026-11-16 推算）
