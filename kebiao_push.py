@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-每日课表微信推送（WxPusher，免费）
+每日课表微信推送（PushPlus 一对多推送）
 本地运行或 GitHub Actions 云端运行均可。
 """
 
@@ -11,10 +11,8 @@ import urllib.request
 
 # ================== 配置区 ==================
 # 云端（GitHub Actions）用环境变量；本地运行用下面默认值
-APP_TOKEN = os.environ.get("WXPUSHER_TOKEN", "AT_y36HPMUXZVmC6esqwszTERXC6mpMLXMl")
-UIDS = [
-    "UID_U8IB6v4dB5DsXAQFpFBaTiTYalmF",
-]
+PUSHPLUS_TOKEN = os.environ.get("PUSHPLUS_TOKEN", "cef1db7a8959464e81c72fea39ef3382")
+TOPIC = "feiya01"   # PushPlus 一对多群组编码
 
 # 本学期第 1 周的周一（由第10周周一=2026-11-16 推算）
 SEMESTER_START = datetime.date(2026, 9, 14)
@@ -68,37 +66,85 @@ def current_week(today):
     return max(1, (today - SEMESTER_START).days // 7 + 1)
 
 
-def build_day_html(target_date):
+def _period_label(s, e):
+    """节次文字，如 第1-2节"""
+    return f"第{s}节" if s == e else f"第{s}-{e}节"
+
+
+def _time_label(s, e):
+    """时间段文字，如 08:10-09:45"""
+    return PERIOD_TIME[s] if s == e else \
+        f"{PERIOD_TIME[s].split('-')[0]}-{PERIOD_TIME[e].split('-')[1]}"
+
+
+def _day_emoji(s):
+    """按时段配个可爱的 emoji"""
+    if s <= 5:
+        return "🌅"
+    if s <= 9:
+        return "☀️"
+    return "🌙"
+
+
+CUTE_NO_CLASS = [
+    "今天没有课，好好休息呀～ 🎀",
+    "今天无课！去玩吧～ 🧸✨",
+    "空空的一天，适合摸鱼和奶茶 🧋",
+]
+
+
+def build_day_html(target_date, label="今天"):
     wd = target_date.weekday()
     wk = current_week(target_date)
-    lines = [
-        f"<h3>📅 {target_date.month}月{target_date.day}日 {WEEKDAY_NAME[wd]}（第{wk}周）</h3>"
-    ]
     day_courses = [c for c in COURSES if c[0] == wd and wk in _weeks(c[5])]
+
+    lines = [
+        # 居中、加粗、放大的标题
+        '<div style="text-align:center;margin:6px 0 2px 0;">',
+        f'<span style="font-size:22px;font-weight:bold;color:#e91e63;">🌸 {target_date.month}月{target_date.day}日 {WEEKDAY_NAME[wd]} 🌸</span><br>',
+        f'<span style="font-size:14px;color:#999;">{label} · 第{wk}周 · {"共%d节课" % len(day_courses) if day_courses else "无课"}</span>',
+        '</div>',
+        '<hr style="border:none;border-top:2px dashed #f8bbd0;margin:8px 0;">',
+    ]
+
     if not day_courses:
-        lines.append("<p>今天没有课，好好休息～ 🎉</p>")
+        import random
+        lines.append(f'<p style="text-align:center;font-size:15px;color:#666;">{random.choice(CUTE_NO_CLASS)}</p>')
     else:
-        lines.append("<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse'>"
-                     "<tr><th>节次/时间</th><th>课程</th><th>教室</th></tr>")
-        for _, s, e, name, room, _w in sorted(day_courses, key=lambda x: x[1]):
-            t = PERIOD_TIME[s] if s == e else \
-                f"{PERIOD_TIME[s].split('-')[0]}-{PERIOD_TIME[e].split('-')[1]}"
-            seg = f"第{s}节 {t}" if s == e else f"第{s}-{e}节 {t}"
-            lines.append(f"<tr><td>{seg}</td><td>{name}</td><td>{room}</td></tr>")
+        lines.append(
+            '<table style="width:100%;border-collapse:collapse;font-size:14px;">'
+            '<tr style="background:#fce4ec;">'
+            '<th style="padding:6px;border:1px solid #f8bbd0;">节次</th>'
+            '<th style="padding:6px;border:1px solid #f8bbd0;">时间</th>'
+            '<th style="padding:6px;border:1px solid #f8bbd0;">课程</th>'
+            '<th style="padding:6px;border:1px solid #f8bbd0;">教室</th>'
+            '</tr>'
+        )
+        for i, (_, s, e, name, room, _w) in enumerate(sorted(day_courses, key=lambda x: x[1])):
+            bg = "#fff" if i % 2 == 0 else "#fff7fb"
+            lines.append(
+                f'<tr style="background:{bg};">'
+                f'<td style="padding:6px;border:1px solid #f8bbd0;text-align:center;color:#ad1457;font-weight:bold;white-space:nowrap;">{_day_emoji(s)} {_period_label(s, e)}</td>'
+                f'<td style="padding:6px;border:1px solid #f8bbd0;text-align:center;white-space:nowrap;">{_time_label(s, e)}</td>'
+                f'<td style="padding:6px;border:1px solid #f8bbd0;">{name}</td>'
+                f'<td style="padding:6px;border:1px solid #f8bbd0;text-align:center;color:#1565c0;white-space:nowrap;">📍{room}</td>'
+                f'</tr>'
+            )
         lines.append("</table>")
+        lines.append('<p style="text-align:center;font-size:12px;color:#bbb;margin-top:6px;">—— 今天也要加油鸭 🐤 ——</p>')
     return "\n".join(lines)
 
 
 def push(title, html):
     payload = {
-        "appToken": APP_TOKEN,
-        "content": f"<h2>{title}</h2>\n" + html,
-        "summary": title,
-        "contentType": 3,   # 3 = html
-        "uids": UIDS,
+        "token": PUSHPLUS_TOKEN,
+        "title": title,
+        "content": html,
+        "template": "html",
+        "topic": TOPIC,
     }
     req = urllib.request.Request(
-        "https://wxpusher.zjiecode.com/api/send/message",
+        "https://www.pushplus.plus/send",
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
@@ -109,8 +155,8 @@ def push(title, html):
 def main():
     today = datetime.date.today()
     tomorrow = today + datetime.timedelta(days=1)
-    push(f"今天的课表（{WEEKDAY_NAME[today.weekday()]}）", build_day_html(today))
-    push(f"明天的课表（{WEEKDAY_NAME[tomorrow.weekday()]}）", build_day_html(tomorrow))
+    push(f"🌸 {WEEKDAY_NAME[today.weekday()]}课表 · {today.month}月{today.day}日", build_day_html(today, "今天"))
+    push(f"🌸 明天 {WEEKDAY_NAME[tomorrow.weekday()]}课表 · {tomorrow.month}月{tomorrow.day}日", build_day_html(tomorrow, "明天"))
     print("推送完成")
 
 
